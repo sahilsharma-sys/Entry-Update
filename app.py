@@ -51,11 +51,6 @@ with tab1:
         col1.metric("Most Used Courier", top_courier)
         col2.metric("Most Updated Merchant", top_merchant)
 
-        # Charts
-        st.subheader("🚚 Courier Usage Chart")
-        courier_counts = df['Courier'].str.split(' \| ').explode().value_counts()
-        st.bar_chart(courier_counts)
-
         st.subheader("🛍️ Top 10 Merchants by Updates")
         top_merchants = df['Merchant'].value_counts().head(10)
         st.bar_chart(top_merchants)
