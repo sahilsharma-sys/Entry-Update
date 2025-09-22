@@ -8,7 +8,7 @@ import io
 couriers = [
     "ATS", "NimbusPost", "Blue Dart Direct", "Shipyaari", "Delhivery",
     "Ecom Express", "Ekart", "Shadowfax", "Xpressbees", "Blitz",
-    "Professional", "GoSwift", "Pikndel"
+    "Professional", "GoSwift", "Pikndel", "DTDC"
 ]
 
 # 📌 File path
