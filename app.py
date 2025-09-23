@@ -101,7 +101,7 @@ with tab2:
     if st.button("💾 Save Update"):
         if final_merchant and selected_couriers:
             new_entry = {
-                "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Date": datetime.now().strftime("%d-%b-%y"),
                 "Merchant": final_merchant,
                 "Courier": " | ".join(selected_couriers),
                 "Remarks": remarks
@@ -125,7 +125,7 @@ with tab2:
                     merchant_name = merchant_name.strip()
                     if merchant_name:
                         new_entry = {
-                            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "Date": datetime.now().strftime("%d-%b-%y"),
                             "Merchant": merchant_name,
                             "Courier": " | ".join(batch_couriers),
                             "Remarks": ""
