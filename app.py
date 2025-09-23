@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import os
 import io
 
-st.set_page_config(page_title="Allocation CRM", layout="wide")
+st.set_page_config(page_title="Allocation CRM", layout="centered")
 
 # ---------------------------
 # Config
