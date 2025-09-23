@@ -1,198 +1,115 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 import os
-import io
+from datetime import datetime, timedelta
 
-# 📌 Fixed courier list
-couriers = [
-    "ATS", "NimbusPost", "Blue Dart Direct", "Shipyaari", "Delhivery",
-    "Ecom Express", "Ekart", "Shadowfax", "Xpressbees", "Blitz",
-    "Professional", "GoSwift", "Pikndel", "DTDC"
-]
+# === File Path ===
+file_path = "crm_allocation.xlsx"
 
-# 📌 File path
-file_path = "allocation_updates.xlsx"
-
-# 🔹 Load existing file or create new
+# === Load existing or create new ===
 if os.path.exists(file_path):
     df = pd.read_excel(file_path)
+
+    # ✅ Force Date column to datetime (fix for old entries)
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 else:
     df = pd.DataFrame(columns=["Date", "Merchant", "Courier", "Remarks"])
     df.to_excel(file_path, index=False, engine="openpyxl")
 
-# 🛠 Ensure Date column is datetime
-if not df.empty:
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+# === Streamlit UI ===
+st.set_page_config(page_title="CRM Allocation Dashboard", layout="wide")
+st.title("📦 CRM Allocation Dashboard")
 
-# --- Session State for Merchant History ---
-if "merchant_history" not in st.session_state:
-    st.session_state.merchant_history = df["Merchant"].dropna().unique().tolist()
+# Sidebar Navigation
+menu = st.sidebar.radio("📌 Menu", ["Add Entry", "Dashboard", "Logs"])
 
-# --- CRM-Style Tabs ---
-tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Entry", "📄 Logs"])
+# === Add Entry Page ===
+if menu == "Add Entry":
+    st.header("➕ Add New Entry")
 
-# ----------------- TAB 1: Dashboard -----------------
-with tab1:
-    st.header("📊 Allocation Dashboard")
+    merchant = st.text_input("Merchant Name")
+    couriers = [
+        "ATS", "NimbusPost", "Blue Dart Direct", "Shipyaari", "Delhivery",
+        "Ecom Express", "Ekart", "Shadowfax", "Xpressbees", "DTDC"
+    ]
+    courier = st.selectbox("Courier", couriers)
+    remarks = st.text_area("Remarks")
 
-    if not df.empty:
-        # Date Filter
-        min_date, max_date = df["Date"].min(), df["Date"].max()
-        if pd.notnull(min_date) and pd.notnull(max_date):
-            date_range = st.date_input("📅 Filter by Date Range", [min_date, max_date])
-            if isinstance(date_range, list) and len(date_range) == 2:
-                df = df[(df["Date"] >= pd.to_datetime(date_range[0])) & 
-                        (df["Date"] <= pd.to_datetime(date_range[1]))]
-
-    # Summary Cards
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Updates", len(df))
-    col2.metric("Unique Merchants", df["Merchant"].nunique())
-    col3.metric("Unique Couriers Used", df["Courier"].nunique())
-
-    # Last Update Info
-    if not df.empty and df["Date"].notnull().any():
-        last_update = df["Date"].max().strftime("%Y-%m-%d %H:%M:%S")
-        st.info(f"🕒 Last Update: {last_update}")
-
-    # Insights
-    if not df.empty:
-        if df['Courier'].notnull().any():
-            top_courier = df['Courier'].str.split(' \| ').explode().value_counts().idxmax()
-        else:
-            top_courier = "N/A"
-        if df['Merchant'].notnull().any():
-            top_merchant = df['Merchant'].value_counts().idxmax()
-        else:
-            top_merchant = "N/A"
-
-        col1, col2 = st.columns(2)
-        col1.metric("Most Used Courier", top_courier)
-        col2.metric("Most Updated Merchant", top_merchant)
-
-        # Weekly Trend
-        if df["Date"].notnull().any():
-            st.subheader("📈 Updates Over Time (Weekly)")
-            weekly = df.set_index("Date").resample("W").size()
-            st.line_chart(weekly)
-
-        # Top Merchants
-        st.subheader("🛍️ Top 10 Merchants by Updates")
-        top_merchants = df['Merchant'].value_counts().head(10)
-        st.bar_chart(top_merchants)
-
-# ----------------- TAB 2: Add Entry -----------------
-with tab2:
-    st.header("➕ Add Allocation Entry")
-
-    # Single Entry
-    st.subheader("Single Entry")
-    merchant = st.selectbox(
-        "Select Existing Merchant",
-        options=[""] + st.session_state.merchant_history,
-        index=0
-    )
-    new_merchant = st.text_input("Or Enter New Merchant Name")
-    final_merchant = new_merchant if new_merchant else merchant
-
-    selected_couriers = st.multiselect("Select Courier(s)", couriers)
-    replace_with = st.text_input("Remarks (Optional)")
-
-    if st.button("💾 Save Update"):
-        if final_merchant and selected_couriers:
-            new_entry = {
+    if st.button("Save Entry"):
+        if merchant and courier:
+            new_data = pd.DataFrame([{
                 "Date": datetime.now(),
-                "Merchant": final_merchant,
-                "Courier": " | ".join(selected_couriers),
-                "Remarks": replace_with if replace_with else ""
-            }
-            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+                "Merchant": merchant,
+                "Courier": courier,
+                "Remarks": remarks
+            }])
+            df = pd.concat([df, new_data], ignore_index=True)
             df.to_excel(file_path, index=False, engine="openpyxl")
-
-            if final_merchant not in st.session_state.merchant_history:
-                st.session_state.merchant_history.append(final_merchant)
-
-            st.success("✅ Update saved successfully!")
+            st.success("✅ Entry Saved Successfully!")
         else:
-            st.warning("⚠️ Please enter Merchant Name and select at least one Courier.")
+            st.error("⚠️ Please fill all required fields.")
 
-    # Batch Entry
-    with st.expander("📝 Batch Entry (Multiple Merchants)"):
-        batch_entries = st.text_area("Add Multiple Merchants (one per line)")
-        batch_couriers = st.multiselect("Apply Couriers to All", couriers, key="batch_couriers_tab")
-        if st.button("💾 Save Batch Entries"):
-            if batch_entries and batch_couriers:
-                added_count = 0
-                for merchant_name in batch_entries.split("\n"):
-                    merchant_name = merchant_name.strip()
-                    if merchant_name:
-                        new_entry = {
-                            "Date": datetime.now(),
-                            "Merchant": merchant_name,
-                            "Courier": " | ".join(batch_couriers),
-                            "Remarks": ""
-                        }
-                        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-                        if merchant_name not in st.session_state.merchant_history:
-                            st.session_state.merchant_history.append(merchant_name)
-                        added_count += 1
-                df.to_excel(file_path, index=False, engine="openpyxl")
-                st.success(f"✅ {added_count} entries added!")
+# === Dashboard Page ===
+elif menu == "Dashboard":
+    st.header("📊 Dashboard Overview")
 
-# ----------------- TAB 3: Logs -----------------
-with tab3:
-    st.header("📄 Allocation Logs")
+    if not df.empty:
+        # ✅ Last Update
+        if df["Date"].notnull().any():
+            last_update = df["Date"].max().strftime("%Y-%m-%d %H:%M:%S")
+            st.info(f"🕒 Last Update: {last_update}")
 
-    # Search / Filter
-    search_merchant = st.text_input("Search by Merchant", key="search_tab3")
-    search_courier = st.text_input("Search by Courier", key="search_courier_tab3")
+        col1, col2, col3 = st.columns(3)
 
-    filtered_df = df.copy()
-    if search_merchant:
-        filtered_df = filtered_df[filtered_df["Merchant"].str.contains(search_merchant, case=False, na=False)]
-    if search_courier:
-        filtered_df = filtered_df[filtered_df["Courier"].str.contains(search_courier, case=False, na=False)]
+        with col1:
+            st.metric("Total Merchants", df["Merchant"].nunique())
 
-    # Highlight Recent Entries
-    def highlight_recent(row):
-        try:
-            if pd.notnull(row['Date']) and row['Date'] > datetime.now() - timedelta(days=7):
-                return ['background-color: #d4f4dd'] * len(row)
-            else:
-                return [''] * len(row)
-        except:
-            return [''] * len(row)
+        with col2:
+            st.metric("Total Couriers Used", df["Courier"].nunique())
 
-    if not filtered_df.empty:
-        st.dataframe(filtered_df.tail(50).style.apply(highlight_recent, axis=1))
+        with col3:
+            st.metric("Total Entries", len(df))
+
+        # === Highlights ===
+        st.subheader("🌟 Highlights")
+        courier_counts = df["Courier"].value_counts().head(5)
+        st.write("**Top Couriers:**")
+        st.bar_chart(courier_counts)
+
+        merchant_counts = df["Merchant"].value_counts().head(5)
+        st.write("**Top Merchants:**")
+        st.bar_chart(merchant_counts)
+
+        # === Weekly Summary ===
+        st.subheader("📅 Weekly Summary")
+        last_week = datetime.now() - timedelta(days=7)
+        weekly_data = df[df["Date"].notnull() & (df["Date"] >= last_week)]
+
+        if not weekly_data.empty:
+            weekly_summary = weekly_data.groupby("Courier").size()
+            st.bar_chart(weekly_summary)
+        else:
+            st.warning("No data available for this week.")
     else:
-        st.info("No records found for the applied filters.")
+        st.warning("No data available yet. Please add some entries.")
 
-    # Delete Option
-    with st.expander("🗑️ Delete Entry"):
-        if not df.empty:
-            delete_option = st.selectbox(
-                "Select entry to delete",
-                [f"{i} | {row['Merchant']} | {row['Courier']}" for i, row in df.iterrows()]
-            )
-            confirm_delete = st.checkbox("⚠️ Confirm deletion")
-            if st.button("❌ Delete Selected Entry") and confirm_delete:
-                row_index = int(delete_option.split(" | ")[0])
-                df = df.drop(index=row_index).reset_index(drop=True)
-                df.to_excel(file_path, index=False, engine="openpyxl")
-                st.success("✅ Entry deleted successfully!")
-        else:
-            st.info("No entries available to delete.")
+# === Logs Page ===
+elif menu == "Logs":
+    st.header("📜 All Logs")
+    if not df.empty:
+        st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
 
-    # Download
-    st.subheader("⬇️ Download Allocation Log")
-    towrite = io.BytesIO()
-    df.to_excel(towrite, index=False, engine="openpyxl")
-    towrite.seek(0)
-    st.download_button(
-        label="📥 Download Excel File",
-        data=towrite,
-        file_name="allocation_updates.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # Export Options
+        col1, col2 = st.columns(2)
+
+        with col1:
+            excel_data = df.to_excel(index=False, engine="openpyxl")
+            st.download_button("⬇️ Download Logs (Excel)", excel_data, file_name="crm_logs.xlsx")
+
+        with col2:
+            csv_data = df.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Download Logs (CSV)", csv_data, file_name="crm_logs.csv")
+    else:
+        st.warning("No logs to display.")
