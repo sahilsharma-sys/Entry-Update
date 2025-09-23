@@ -21,6 +21,10 @@ else:
     df = pd.DataFrame(columns=["Date", "Merchant", "Courier", "Remarks"])
     df.to_excel(file_path, index=False, engine="openpyxl")
 
+# 🛠 Ensure Date column is datetime
+if not df.empty:
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+
 # --- Session State for Merchant History ---
 if "merchant_history" not in st.session_state:
     st.session_state.merchant_history = df["Merchant"].dropna().unique().tolist()
@@ -32,13 +36,14 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Entry", "📄 Logs"])
 with tab1:
     st.header("📊 Allocation Dashboard")
 
-    # Date Filter
     if not df.empty:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        # Date Filter
         min_date, max_date = df["Date"].min(), df["Date"].max()
-        date_range = st.date_input("📅 Filter by Date Range", [min_date, max_date])
-        if isinstance(date_range, list) and len(date_range) == 2:
-            df = df[(df["Date"] >= pd.to_datetime(date_range[0])) & (df["Date"] <= pd.to_datetime(date_range[1]))]
+        if pd.notnull(min_date) and pd.notnull(max_date):
+            date_range = st.date_input("📅 Filter by Date Range", [min_date, max_date])
+            if isinstance(date_range, list) and len(date_range) == 2:
+                df = df[(df["Date"] >= pd.to_datetime(date_range[0])) & 
+                        (df["Date"] <= pd.to_datetime(date_range[1]))]
 
     # Summary Cards
     col1, col2, col3 = st.columns(3)
@@ -47,22 +52,30 @@ with tab1:
     col3.metric("Unique Couriers Used", df["Courier"].nunique())
 
     # Last Update Info
-    if not df.empty:
+    if not df.empty and df["Date"].notnull().any():
         last_update = df["Date"].max().strftime("%Y-%m-%d %H:%M:%S")
         st.info(f"🕒 Last Update: {last_update}")
 
     # Insights
     if not df.empty:
-        top_courier = df['Courier'].str.split(' \| ').explode().value_counts().idxmax()
-        top_merchant = df['Merchant'].value_counts().idxmax()
+        if df['Courier'].notnull().any():
+            top_courier = df['Courier'].str.split(' \| ').explode().value_counts().idxmax()
+        else:
+            top_courier = "N/A"
+        if df['Merchant'].notnull().any():
+            top_merchant = df['Merchant'].value_counts().idxmax()
+        else:
+            top_merchant = "N/A"
+
         col1, col2 = st.columns(2)
         col1.metric("Most Used Courier", top_courier)
         col2.metric("Most Updated Merchant", top_merchant)
 
         # Weekly Trend
-        st.subheader("📈 Updates Over Time (Weekly)")
-        weekly = df.set_index("Date").resample("W").size()
-        st.line_chart(weekly)
+        if df["Date"].notnull().any():
+            st.subheader("📈 Updates Over Time (Weekly)")
+            weekly = df.set_index("Date").resample("W").size()
+            st.line_chart(weekly)
 
         # Top Merchants
         st.subheader("🛍️ Top 10 Merchants by Updates")
@@ -89,7 +102,7 @@ with tab2:
     if st.button("💾 Save Update"):
         if final_merchant and selected_couriers:
             new_entry = {
-                "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Date": datetime.now(),
                 "Merchant": final_merchant,
                 "Courier": " | ".join(selected_couriers),
                 "Remarks": replace_with if replace_with else ""
@@ -115,7 +128,7 @@ with tab2:
                     merchant_name = merchant_name.strip()
                     if merchant_name:
                         new_entry = {
-                            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "Date": datetime.now(),
                             "Merchant": merchant_name,
                             "Courier": " | ".join(batch_couriers),
                             "Remarks": ""
@@ -144,14 +157,17 @@ with tab3:
     # Highlight Recent Entries
     def highlight_recent(row):
         try:
-            if row['Date'] > datetime.now() - timedelta(days=7):
+            if pd.notnull(row['Date']) and row['Date'] > datetime.now() - timedelta(days=7):
                 return ['background-color: #d4f4dd'] * len(row)
             else:
                 return [''] * len(row)
         except:
             return [''] * len(row)
 
-    st.dataframe(filtered_df.tail(50).style.apply(highlight_recent, axis=1))
+    if not filtered_df.empty:
+        st.dataframe(filtered_df.tail(50).style.apply(highlight_recent, axis=1))
+    else:
+        st.info("No records found for the applied filters.")
 
     # Delete Option
     with st.expander("🗑️ Delete Entry"):
