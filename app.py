@@ -14,16 +14,14 @@ couriers = [
 # 📌 File path
 file_path = "allocation_updates.xlsx"
 
-# 🔹 Load existing file or create new
-if os.path.exists(file_path):
-    df = pd.read_excel(file_path)
-else:
-    df = pd.DataFrame(columns=["Date", "Merchant", "Courier", "Remarks"])
-    df.to_excel(file_path, index=False, engine="openpyxl")
+# 🔹 Ensure file exists
+if not os.path.exists(file_path):
+    pd.DataFrame(columns=["Date", "Merchant", "Courier", "Remarks"]).to_excel(file_path, index=False, engine="openpyxl")
 
 # --- Session State for Merchant History ---
 if "merchant_history" not in st.session_state:
-    st.session_state.merchant_history = df["Merchant"].dropna().unique().tolist()
+    df_init = pd.read_excel(file_path)
+    st.session_state.merchant_history = df_init["Merchant"].dropna().unique().tolist()
 
 # --- CRM-Style Tabs ---
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Entry", "📄 Logs"])
@@ -32,50 +30,52 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Entry", "📄 Logs"])
 with tab1:
     st.header("📊 Allocation Dashboard")
 
-    # Reload data from file every time
-    if os.path.exists(file_path):
-        df = pd.read_excel(file_path)
+    df = pd.read_excel(file_path)   # always load fresh
 
-    # Date Filter
     if not df.empty:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+
+        # Date Filter
         min_date, max_date = df["Date"].min(), df["Date"].max()
         date_range = st.date_input("📅 Filter by Date Range", [min_date, max_date])
+        filtered_df = df.copy()
         if isinstance(date_range, list) and len(date_range) == 2:
-            df = df[(df["Date"] >= pd.to_datetime(date_range[0])) & (df["Date"] <= pd.to_datetime(date_range[1]))]
+            filtered_df = filtered_df[(filtered_df["Date"] >= pd.to_datetime(date_range[0])) & (filtered_df["Date"] <= pd.to_datetime(date_range[1]))]
 
-    # Summary Cards
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Updates", len(df))
-    col2.metric("Unique Merchants", df["Merchant"].nunique())
-    col3.metric("Unique Couriers Used", df["Courier"].nunique())
+        # Summary Cards
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Updates", len(filtered_df))
+        col2.metric("Unique Merchants", filtered_df["Merchant"].nunique())
+        col3.metric("Unique Couriers Used", filtered_df["Courier"].nunique())
 
-    # Last Update Info
-    if not df.empty:
+        # Last Update Info
         last_update = df["Date"].max().strftime("%Y-%m-%d %H:%M:%S")
         st.info(f"🕒 Last Update: {last_update}")
 
-    # Insights
-    if not df.empty:
-        top_courier = df['Courier'].str.split(' \| ').explode().value_counts().idxmax()
-        top_merchant = df['Merchant'].value_counts().idxmax()
+        # Insights
+        top_courier = filtered_df['Courier'].str.split(' \| ').explode().value_counts().idxmax()
+        top_merchant = filtered_df['Merchant'].value_counts().idxmax()
         col1, col2 = st.columns(2)
         col1.metric("Most Used Courier", top_courier)
         col2.metric("Most Updated Merchant", top_merchant)
 
         # Weekly Trend
         st.subheader("📈 Updates Over Time (Weekly)")
-        weekly = df.set_index("Date").resample("W").size()
+        weekly = filtered_df.set_index("Date").resample("W").size()
         st.line_chart(weekly)
 
         # Top Merchants
         st.subheader("🛍️ Top 10 Merchants by Updates")
-        top_merchants = df['Merchant'].value_counts().head(10)
+        top_merchants = filtered_df['Merchant'].value_counts().head(10)
         st.bar_chart(top_merchants)
+    else:
+        st.info("No data available yet.")
 
 # ----------------- TAB 2: Add Entry -----------------
 with tab2:
     st.header("➕ Add Allocation Entry")
+
+    df = pd.read_excel(file_path)   # reload
 
     # Single Entry
     st.subheader("Single Entry")
@@ -104,7 +104,7 @@ with tab2:
             if final_merchant not in st.session_state.merchant_history:
                 st.session_state.merchant_history.append(final_merchant)
 
-            st.success("✅ Update saved successfully!")
+            st.success("✅ Update saved successfully! Please refresh Dashboard/Logs to see.")
         else:
             st.warning("⚠️ Please enter Merchant Name and select at least one Courier.")
 
@@ -130,15 +130,13 @@ with tab2:
                             st.session_state.merchant_history.append(merchant_name)
                         added_count += 1
                 df.to_excel(file_path, index=False, engine="openpyxl")
-                st.success(f"✅ {added_count} entries added!")
+                st.success(f"✅ {added_count} entries added! Refresh Dashboard/Logs to see.")
 
 # ----------------- TAB 3: Logs -----------------
 with tab3:
     st.header("📄 Allocation Logs")
 
-    # Reload data from file
-    if os.path.exists(file_path):
-        df = pd.read_excel(file_path)
+    df = pd.read_excel(file_path)   # reload
 
     # Search / Filter
     search_merchant = st.text_input("Search by Merchant", key="search_tab3")
@@ -153,7 +151,7 @@ with tab3:
     # Highlight Recent Entries
     def highlight_recent(row):
         try:
-            if row['Date'] > datetime.now() - timedelta(days=7):
+            if pd.to_datetime(row['Date']) > datetime.now() - timedelta(days=7):
                 return ['background-color: #d4f4dd'] * len(row)
             else:
                 return [''] * len(row)
@@ -174,7 +172,7 @@ with tab3:
                 row_index = int(delete_option.split(" | ")[0])
                 df = df.drop(index=row_index).reset_index(drop=True)
                 df.to_excel(file_path, index=False, engine="openpyxl")
-                st.success("✅ Entry deleted successfully!")
+                st.success("✅ Entry deleted successfully! Refresh Logs to see.")
         else:
             st.info("No entries available to delete.")
 
