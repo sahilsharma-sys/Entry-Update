@@ -25,9 +25,9 @@ else:
     df = pd.DataFrame(columns=["Date", "Merchant", "Courier", "Remarks"])
     df.to_excel(FILE_PATH, index=False, engine="openpyxl")
 
-# Ensure Date is datetime
+# Ensure Date is datetime.date
 if not df.empty:
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
 # Session-state for merchant history
 if "merchant_history" not in st.session_state:
@@ -49,8 +49,8 @@ with tab1:
         date_range = st.date_input("📅 Filter by Date Range (Optional)", [min_date, max_date])
         filtered_df = df.copy()
         if len(date_range) == 2:
-            filtered_df = filtered_df[(filtered_df["Date"].dt.date >= date_range[0]) &
-                                      (filtered_df["Date"].dt.date <= date_range[1])]
+            filtered_df = filtered_df[(filtered_df["Date"] >= date_range[0]) &
+                                      (filtered_df["Date"] <= date_range[1])]
     else:
         filtered_df = df.copy()
 
@@ -61,7 +61,7 @@ with tab1:
     c3.metric("Unique Couriers Used", filtered_df["Courier"].nunique())
 
     if not filtered_df.empty:
-        last_update = filtered_df["Date"].max().strftime("%Y-%m-%d %H:%M:%S")
+        last_update = filtered_df["Date"].max().strftime("%d-%b-%y")
         st.info(f"🕒 Last Update: {last_update}")
 
         # Insights
@@ -73,7 +73,7 @@ with tab1:
 
         # Weekly Trend
         st.subheader("📈 Updates Over Time (Weekly)")
-        weekly = filtered_df.set_index("Date").resample("W").size()
+        weekly = filtered_df.set_index(pd.to_datetime(filtered_df["Date"])).resample("W").size()
         st.line_chart(weekly)
 
         # Top Merchants
@@ -151,10 +151,14 @@ with tab3:
     if search_courier:
         logs_df = logs_df[logs_df["Courier"].str.contains(search_courier, case=False, na=False)]
 
+    # Format Date for display
+    logs_df['Date'] = pd.to_datetime(logs_df['Date']).dt.strftime('%d-%b-%y')
+
     # Highlight last 7 days
     def highlight_recent(row):
         try:
-            if row['Date'] > datetime.now() - timedelta(days=7):
+            row_date = datetime.strptime(row['Date'], '%d-%b-%y').date()
+            if row_date > datetime.now().date() - timedelta(days=7):
                 return ['background-color: #d4f4dd']*len(row)
             else:
                 return ['']*len(row)
