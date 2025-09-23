@@ -42,7 +42,7 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Entry", "📄 Logs"])
 # TAB 1: Dashboard
 # ---------------------------
 with tab1:
-    st.header("📊 Allocation Dashboard (Full History)")
+    st.header("📊 Allocation Dashboard ")
 
     if not df.empty:
         min_date, max_date = df["Date"].min(), df["Date"].max()
