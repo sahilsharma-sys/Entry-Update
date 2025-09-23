@@ -71,11 +71,6 @@ with tab1:
         col1.metric("Most Used Courier", top_courier)
         col2.metric("Most Updated Merchant", top_merchant)
 
-        # Weekly Trend
-        st.subheader("📈 Updates Over Time (Weekly)")
-        weekly = filtered_df.set_index(pd.to_datetime(filtered_df["Date"])).resample("W").size()
-        st.line_chart(weekly)
-
         # Top Merchants
         st.subheader("🛍️ Top 10 Merchants by Updates")
         top_merchants = filtered_df['Merchant'].value_counts().head(10)
