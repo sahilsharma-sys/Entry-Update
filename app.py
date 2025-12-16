@@ -251,8 +251,8 @@ elif menu == "📊 Excel Formula Updater Tool":
 
     st.title("📊 Excel Formula Updater Tool (with Error → New Files Creator)")
 
-    source_folder = st.text_input("📂 Source Folder Path")
-    working_folder = st.text_input("📁 Destination Folder Path")
+    source_folder = st.text_input("📂 Source Folder Path", r"D:\Sahil\Invoices\Python\Excel Updater\Source")
+    working_folder = st.text_input("📁 Destination Folder Path", r"D:\Sahil\Invoices\Python\Excel Updater\Working")
 
     adf_food_file_path = st.text_input(
         "📘 ADF Foods File Path",
@@ -311,9 +311,16 @@ elif menu == "📊 Excel Formula Updater Tool":
                 source_file = os.path.join(source_folder, filename)
                 working_file = os.path.join(working_folder, filename)
 
+                # Make sure working folder exists
+                os.makedirs(working_folder, exist_ok=True)
+
+                # Copy source to working
+                shutil.copy2(source_file, working_file)
+
                 df = pd.read_excel(source_file, usecols=range(37))
                 wb = load_workbook(working_file)
 
+                # Find or create sheet
                 ws = None
                 for sheet in wb.sheetnames:
                     if wb[sheet]["A1"].value == "Client Name":
@@ -327,11 +334,10 @@ elif menu == "📊 Excel Formula Updater Tool":
                     for c in range(1, 38):
                         ws.cell(r, c).value = None
 
-                # Write headers
+                # Write headers and data
                 for c, name in enumerate(df.columns, start=1):
                     ws.cell(1, c).value = name
 
-                # Write data
                 for ridx, row in df.iterrows():
                     for c, val in enumerate(row, start=1):
                         ws.cell(ridx + 2, c).value = val
@@ -364,10 +370,8 @@ elif menu == "📊 Excel Formula Updater Tool":
             col3.metric("⏳ Remaining", total_files - len(processed) - len(error_files))
 
         st.success("🎉 Update Completed!")
-
         st.write("✅ Processed Files")
         st.dataframe(pd.DataFrame(processed, columns=["Processed"]))
-
         st.write("❌ Error Files")
         st.dataframe(pd.DataFrame(error_files, columns=["Errors"]))
 
@@ -377,96 +381,91 @@ elif menu == "📊 Excel Formula Updater Tool":
         st.session_state["working_folder"] = working_folder
 
     # =====================================================
-# 🆕 NEW FILE CREATOR FOR ERROR FILES
-# (NEW FILES WILL BE CREATED INSIDE SOURCE FOLDER)
-# =====================================================
-if create_btn:
+    # NEW FILE CREATOR FOR ERROR FILES
+    # =====================================================
+    if create_btn:
 
-    if "error_files" not in st.session_state:
-        st.error("❌ First run the updater to detect error files!")
-    else:
-        st.info("⚙ Creating NEW files inside SOURCE folder (New Files)…")
+        if "error_files" not in st.session_state or not st.session_state["error_files"]:
+            st.error("❌ First run the updater to detect error files!")
+        else:
+            st.info("⚙ Creating NEW files inside SOURCE folder (New Files)…")
 
-        error_files = st.session_state["error_files"]
-        source_folder = st.session_state["source_folder"]
-        working_folder = st.session_state["working_folder"]
+            error_files = st.session_state["error_files"]
+            source_folder = st.session_state["source_folder"]
 
-        # 🔥 SAME LOGIC AS "NEW FILE CREATION TOOL"
-        new_folder = os.path.join(source_folder, "New Files")
-        os.makedirs(new_folder, exist_ok=True)
+            # New folder inside source
+            new_folder = os.path.join(source_folder, "New Files")
+            os.makedirs(new_folder, exist_ok=True)
 
-        created = []
+            created = []
 
-        extra_columns = [
-            "Weight","Merchant Zone","Courier Name","FWD","CHECK","COD","CHECK",
-            "RTO","CHECK","REVERSAL","CHECK","QC","TOTAL","TOTAL+GST","Diff",
-            "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
-            "Reverse","COD","SDL","Fuel","QC","Others","Gross"
-        ]
+            extra_columns = [
+                "Weight","Merchant Zone","Courier Name","FWD","CHECK","COD","CHECK",
+                "RTO","CHECK","REVERSAL","CHECK","QC","TOTAL","TOTAL+GST","Diff",
+                "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
+                "Reverse","COD","SDL","Fuel","QC","Others","Gross"
+            ]
 
-        for f in error_files:
-            try:
-                # ✅ base file working folder se uthao
-                src = os.path.join(source_folder, f)
-                dst = os.path.join(new_folder, f)
+            for f in error_files:
+                try:
+                    src = os.path.join(source_folder, f)
+                    if not os.path.exists(src):
+                        st.warning(f"⚠ File not found: {f}")
+                        continue
 
-                if not os.path.exists(src):
-                    st.warning(f"⚠ File not found: {f}")
-                    continue
+                    dst = os.path.join(new_folder, f)
+                    shutil.copy2(src, dst)
 
-                shutil.copy2(src, dst)
+                    df = pd.read_excel(dst, usecols=range(37))
+                    wb = load_workbook(dst, keep_links=False)
 
-                df = pd.read_excel(dst, usecols=range(37))
-                wb = load_workbook(dst, keep_links=False)
+                    ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
+                    ws.title = "Raw"
 
-                ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
-                ws.title = "Raw"
+                    # Clear first 37 columns
+                    for r in range(1, ws.max_row + 1):
+                        for c in range(1, 38):
+                            ws.cell(r, c).value = None
 
-                # Clear first 37 columns
-                for r in range(1, ws.max_row + 1):
-                    for c in range(1, 38):
-                        ws.cell(r, c).value = None
+                    # Write headers and data
+                    for c, col_name in enumerate(df.columns, start=1):
+                        ws.cell(1, c).value = col_name
 
-                # Write headers
-                for c, col_name in enumerate(df.columns, start=1):
-                    ws.cell(1, c).value = col_name
+                    for ridx, row in df.iterrows():
+                        for c, val in enumerate(row, start=1):
+                            ws.cell(ridx + 2, c).value = val
 
-                # Write data
-                for ridx, row in df.iterrows():
-                    for c, val in enumerate(row, start=1):
-                        ws.cell(ridx + 2, c).value = val
+                    last_row = ws.max_row
 
-                last_row = ws.max_row
+                    # Extra columns
+                    for j, name in enumerate(extra_columns):
+                        ws.cell(1, 38 + j).value = name
 
-                # Extra columns
-                for j, name in enumerate(extra_columns):
-                    ws.cell(1, 38 + j).value = name
+                    # Apply formulas
+                    for col, base_formula in ref_formulas.items():
+                        col_letter = ws.cell(2, col).column_letter
+                        for r in range(2, last_row + 1):
+                            ws[f"{col_letter}{r}"] = Translator(
+                                base_formula, origin=f"{col_letter}2"
+                            ).translate_formula(f"{col_letter}{r}")
 
-                # Apply formulas
-                for col, base_formula in ref_formulas.items():
-                    col_letter = ws.cell(2, col).column_letter
-                    for r in range(2, last_row + 1):
-                        ws[f"{col_letter}{r}"] = Translator(
-                            base_formula,
-                            origin=f"{col_letter}2"
-                        ).translate_formula(f"{col_letter}{r}")
+                    # Pricing sheet
+                    if "Pricing" in wb.sheetnames:
+                        wb.remove(wb["Pricing"])
+                    pws = wb.create_sheet("Pricing")
+                    for r, row in enumerate(pricing_data, start=1):
+                        for c, val in enumerate(row, start=1):
+                            pws.cell(r, c, val)
 
-                # Pricing sheet
-                if "Pricing" in wb.sheetnames:
-                    wb.remove(wb["Pricing"])
-                pws = wb.create_sheet("Pricing")
-                for r, row in enumerate(pricing_data, start=1):
-                    for c, val in enumerate(row, start=1):
-                        pws.cell(r, c, val)
+                    wb.save(dst)
+                    created.append(f)
 
-                wb.save(dst)
-                created.append(f)
+                except Exception as e:
+                    st.warning(f"❌ Failed: {f} → {e}")
 
-            except Exception as e:
-                st.warning(f"❌ Failed: {f} → {e}")
+            st.success("🎉 New files created inside SOURCE folder!")
+            st.dataframe(pd.DataFrame(created, columns=["New Files Created"]))
 
-        st.success("🎉 New files created inside SOURCE folder!")
-        st.dataframe(pd.DataFrame(created, columns=["New Files Created"]))
 
 
 
