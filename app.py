@@ -248,22 +248,39 @@ elif menu == "🗑 Delete Files Tool":
 # 5️⃣ EXCEL FORMULA UPDATER TOOL (WITH NEW FILE CREATOR & SUMMARY DOWNLOAD)
 # =====================================================
 elif menu == "📊 Excel Formula Updater Tool":
+
     st.title("📊 Excel Formula Updater Tool (with Error → New Files Creator)")
 
     source_folder = st.text_input("📂 Source Folder Path")
     working_folder = st.text_input("📁 Destination Folder Path")
-    adf_food_file_path = st.text_input("📘 ADF Foods File Path", r"D:\Sahil\Invoices\Python\Working files\Adf Foods.xlsx")
-    pricing_file_path = st.text_input("📗 Pricing Format File Path", r"D:\Sahil\Invoices\Python\Pricing Format\Pricing format.xlsx")
+
+    adf_food_file_path = st.text_input(
+        "📘 ADF Foods File Path",
+        r"D:\Sahil\Invoices\Python\Working files\Adf Foods.xlsx"
+    )
+    pricing_file_path = st.text_input(
+        "📗 Pricing Format File Path",
+        r"D:\Sahil\Invoices\Python\Pricing Format\Pricing format.xlsx"
+    )
 
     source_files = live_file_status(source_folder)
 
-    # Load reference formulas from ADF file
+    # ----------------------------
+    # Load reference formulas
+    # ----------------------------
     ref_wb = load_workbook(adf_food_file_path, data_only=False)
     ref_ws = ref_wb.active
-    ref_formulas = {col: ref_ws.cell(2, col).value for col in range(38,65) 
-                    if isinstance(ref_ws.cell(2, col).value,str) and ref_ws.cell(2, col).value.startswith("=")}
 
+    ref_formulas = {
+        col: ref_ws.cell(2, col).value
+        for col in range(38, 65)
+        if isinstance(ref_ws.cell(2, col).value, str)
+        and ref_ws.cell(2, col).value.startswith("=")
+    }
+
+    # ----------------------------
     # Load pricing data
+    # ----------------------------
     pricing_df = pd.read_excel(pricing_file_path, header=None)
     pricing_data = pricing_df.values.tolist()
 
@@ -271,14 +288,17 @@ elif menu == "📊 Excel Formula Updater Tool":
     start_btn = st.button("🚀 Start Updating")
     create_btn = st.button("🆕 Create New Files for Error Files")
 
+    # =====================================================
+    # START UPDATING
+    # =====================================================
     if start_btn:
+
         progress = st.progress(0)
         logs = st.empty()
 
         processed = []
         error_files = []
 
-        # Live counters placeholder
         col1, col2, col3 = st.columns(3)
         col1.metric("✅ Processed", 0)
         col2.metric("❌ Errors", 0)
@@ -294,7 +314,6 @@ elif menu == "📊 Excel Formula Updater Tool":
                 df = pd.read_excel(source_file, usecols=range(37))
                 wb = load_workbook(working_file)
 
-                # Find the sheet with A1 = "Client Name" or create new
                 ws = None
                 for sheet in wb.sheetnames:
                     if wb[sheet]["A1"].value == "Client Name":
@@ -317,160 +336,139 @@ elif menu == "📊 Excel Formula Updater Tool":
                     for c, val in enumerate(row, start=1):
                         ws.cell(ridx + 2, c).value = val
 
-                # Add AL column formula
+                # AL column formula
                 last_row = ws.max_row
-                ws["AL2"] = "=IF(W2/1000>9.9,CEILING(W2/1000,1),CEILING(W2/1000,0.5))"
-                for r in range(3, last_row+1):
-                    ws[f"AL{r}"] = f"=IF(W{r}/1000>9.9,CEILING(W{r}/1000,1),CEILING(W{r}/1000,0.5))"
+                for r in range(2, last_row + 1):
+                    ws[f"AL{r}"] = (
+                        f"=IF(W{r}/1000>9.9,"
+                        f"CEILING(W{r}/1000,1),"
+                        f"CEILING(W{r}/1000,0.5))"
+                    )
 
                 wb.save(working_file)
                 processed.append(filename)
 
-                # DELETE source file after successful processing
+                # DELETE source file after success
                 os.remove(source_file)
 
-                # Update logs
                 logs.write(f"✅ ({i}/{total_files}) Processed & Deleted: {filename}")
 
             except Exception as e:
                 error_files.append(filename)
                 logs.write(f"❌ ({i}/{total_files}) Error in {filename} → {e}")
 
-            # Update progress bar
             progress.progress(i / total_files)
 
-            # Update live counters
             col1.metric("✅ Processed", len(processed))
             col2.metric("❌ Errors", len(error_files))
             col3.metric("⏳ Remaining", total_files - len(processed) - len(error_files))
 
-        # Final summary
         st.success("🎉 Update Completed!")
-        st.write("✅ Processed Files:")
+
+        st.write("✅ Processed Files")
         st.dataframe(pd.DataFrame(processed, columns=["Processed"]))
-        st.write("❌ Error Files:")
+
+        st.write("❌ Error Files")
         st.dataframe(pd.DataFrame(error_files, columns=["Errors"]))
 
-        # ===============================
-        # ➤ Generate Downloadable Summary
-        # ===============================
-        import io
-        summary_data = []
-
-        for filename in processed:
-            try:
-                file_path = os.path.join(working_folder, filename)
-                wb = load_workbook(file_path, data_only=True)
-                
-                # Find sheet with A1 = Client Name
-                ws = None
-                for sheet in wb.sheetnames:
-                    if wb[sheet]["A1"].value == "Client Name":
-                        ws = wb[sheet]
-                        break
-                if ws is None:
-                    ws = wb.active
-                
-                client_name = ws["A2"].value
-                az_sum = 0
-                for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=52, max_col=52, values_only=True):  # AZ = 52
-                    val = row[0]
-                    if isinstance(val, (int, float)):
-                        az_sum += val
-                
-                summary_data.append([client_name, az_sum])
-            except Exception as e:
-                summary_data.append([filename, f"Error: {e}"])
-
-        summary_df = pd.DataFrame(summary_data, columns=["Client Name", "AZ Total"])
-
-        # Create Excel in-memory
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            summary_df.to_excel(writer, index=False, sheet_name="Summary")
-            writer.save()
-        output.seek(0)
-
-        st.download_button(
-            label="📥 Download Processed Summary",
-            data=output,
-            file_name="Processed_Summary.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        # Save session state for New File Creator
+        # Save session state
         st.session_state["error_files"] = error_files
         st.session_state["source_folder"] = source_folder
         st.session_state["working_folder"] = working_folder
 
+    # =====================================================
+# 🆕 NEW FILE CREATOR FOR ERROR FILES
+# (NEW FILES WILL BE CREATED INSIDE SOURCE FOLDER)
+# =====================================================
+if create_btn:
 
-    # -------------------------------
-    # NEW FILE CREATOR FOR ERROR FILES
-    # -------------------------------
-    if create_btn:
-        if "error_files" not in st.session_state:
-            st.error("❌ First run the updater to detect error files!")
-        else:
-            st.info("⚙ Creating NEW files for error files (full processing)…")
+    if "error_files" not in st.session_state:
+        st.error("❌ First run the updater to detect error files!")
+    else:
+        st.info("⚙ Creating NEW files inside SOURCE folder (New Files)…")
 
-            error_files = st.session_state["error_files"]
-            source_folder = st.session_state["source_folder"]
-            working_folder = st.session_state["working_folder"]
+        error_files = st.session_state["error_files"]
+        source_folder = st.session_state["source_folder"]
+        working_folder = st.session_state["working_folder"]
 
-            new_folder = os.path.join(source_folder, "New Files")
-            if not os.path.exists(new_folder):
-                os.makedirs(new_folder)
+        # 🔥 SAME LOGIC AS "NEW FILE CREATION TOOL"
+        new_folder = os.path.join(source_folder, "New Files")
+        os.makedirs(new_folder, exist_ok=True)
 
-            created = []
+        created = []
 
-            extra_columns = ["Weight","Merchant Zone","Courier Name","FWD","CHECK","COD","CHECK",
-                             "RTO","CHECK","REVERSAL","CHECK","QC","TOTAL","TOTAL+GST","Diff",
-                             "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
-                             "Reverse","COD","SDL","Fuel","QC","Others","Gross"]
+        extra_columns = [
+            "Weight","Merchant Zone","Courier Name","FWD","CHECK","COD","CHECK",
+            "RTO","CHECK","REVERSAL","CHECK","QC","TOTAL","TOTAL+GST","Diff",
+            "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
+            "Reverse","COD","SDL","Fuel","QC","Others","Gross"
+        ]
 
-            for f in error_files:
-                try:
-                    src = os.path.join(source_folder, f)
-                    dst = os.path.join(new_folder, f)
+        for f in error_files:
+            try:
+                # ✅ base file working folder se uthao
+                src = os.path.join(source_folder, f)
+                dst = os.path.join(new_folder, f)
 
-                    shutil.copy2(src, dst)
+                if not os.path.exists(src):
+                    st.warning(f"⚠ File not found: {f}")
+                    continue
 
-                    wb = load_workbook(dst, data_only=False)
-                    ws = wb.active
-                    for r in range(1, ws.max_row + 1):
-                        for c in range(1, 38):
-                            ws.cell(r, c).value = None
+                shutil.copy2(src, dst)
 
-                    df = pd.read_excel(src, usecols=range(37))
-                    for c, name in enumerate(df.columns, start=1):
-                        ws.cell(1, c).value = name
-                    for ridx, row in df.iterrows():
-                        for c, val in enumerate(row, start=1):
-                            ws.cell(ridx + 2, c).value = val
+                df = pd.read_excel(dst, usecols=range(37))
+                wb = load_workbook(dst, keep_links=False)
 
-                    ws.title = "Raw"
+                ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
+                ws.title = "Raw"
 
-                    for j, name in enumerate(extra_columns):
-                        ws.cell(1, 38 + j).value = name
+                # Clear first 37 columns
+                for r in range(1, ws.max_row + 1):
+                    for c in range(1, 38):
+                        ws.cell(r, c).value = None
 
-                    for col, base_formula in ref_formulas.items():
-                        col_letter = ws.cell(2, col).column_letter
-                        last_row = ws.max_row
-                        for r in range(2, last_row + 1):
-                            ws[f"{col_letter}{r}"] = Translator(base_formula, origin=f"{col_letter}2").translate_formula(f"{col_letter}{r}")
+                # Write headers
+                for c, col_name in enumerate(df.columns, start=1):
+                    ws.cell(1, c).value = col_name
 
-                    pws = wb.create_sheet("Pricing")
-                    for r, row in enumerate(pricing_data, start=1):
-                        for c, val in enumerate(row, start=1):
-                            pws.cell(r, c, val)
+                # Write data
+                for ridx, row in df.iterrows():
+                    for c, val in enumerate(row, start=1):
+                        ws.cell(ridx + 2, c).value = val
 
-                    wb.save(dst)
-                    created.append(f)
-                except Exception as e:
-                    st.warning(f"❌ Failed: {f} → {e}")
+                last_row = ws.max_row
 
-            st.success("🎉 New files created and fully updated!")
-            st.dataframe(pd.DataFrame(created, columns=["New Files"]))
+                # Extra columns
+                for j, name in enumerate(extra_columns):
+                    ws.cell(1, 38 + j).value = name
+
+                # Apply formulas
+                for col, base_formula in ref_formulas.items():
+                    col_letter = ws.cell(2, col).column_letter
+                    for r in range(2, last_row + 1):
+                        ws[f"{col_letter}{r}"] = Translator(
+                            base_formula,
+                            origin=f"{col_letter}2"
+                        ).translate_formula(f"{col_letter}{r}")
+
+                # Pricing sheet
+                if "Pricing" in wb.sheetnames:
+                    wb.remove(wb["Pricing"])
+                pws = wb.create_sheet("Pricing")
+                for r, row in enumerate(pricing_data, start=1):
+                    for c, val in enumerate(row, start=1):
+                        pws.cell(r, c, val)
+
+                wb.save(dst)
+                created.append(f)
+
+            except Exception as e:
+                st.warning(f"❌ Failed: {f} → {e}")
+
+        st.success("🎉 New files created inside SOURCE folder!")
+        st.dataframe(pd.DataFrame(created, columns=["New Files Created"]))
+
+
 
 
 
@@ -577,3 +575,4 @@ elif menu == "🚚 Courier Cost Updater":
                 st.dataframe(pd.DataFrame(processed, columns=["Processed"]))
             if errors:
                 st.dataframe(pd.DataFrame(errors, columns=["Errors"]))
+
