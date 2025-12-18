@@ -9,12 +9,15 @@ st.set_page_config(page_title="Master Excel Utility Tool", layout="wide")
 # =====================================================
 # SIDEBAR
 # =====================================================
-st.sidebar.title("🛠 Master Excel Utility Tool")
+st.sidebar.title("🛠 Master Utility Tool")
 menu = st.sidebar.radio(
     "Select Tool",
     [
         "📂 New File Creation",
-        "📊 Excel Formula Updater"
+        "🔄 CSV → XLSX Converter",
+        "📝 Merchant Auto Rename",
+        "📊 Excel Formula Updater",
+        "🚚 Courier Cost Updater"
     ]
 )
 
@@ -28,22 +31,6 @@ st.sidebar.info(
 # =====================================================
 # HELPERS
 # =====================================================
-def upload_block(title, types):
-    st.subheader(f"📁 {title}")
-    files = st.file_uploader(
-        f"Upload {title} (Files)",
-        type=types,
-        accept_multiple_files=True,
-        key=title+"_files"
-    )
-    zip_file = st.file_uploader(
-        f"Upload {title} (Folder ZIP)",
-        type="zip",
-        key=title+"_zip"
-    )
-    return files, zip_file
-
-
 def extract_files(files, zip_file, exts):
     extracted = []
 
@@ -76,30 +63,25 @@ def make_zip(file_buffers):
 
 
 # =====================================================
-# 📂 NEW FILE CREATION (MULTI-PATH STYLE)
+# 1️⃣ NEW FILE CREATION
 # =====================================================
 if menu == "📂 New File Creation":
     st.title("📂 New File Creation Tool")
 
-    st.markdown("### 🔹 Reference Files")
     adf_file = st.file_uploader("📘 Upload ADF Foods File", type="xlsx")
     pricing_file = st.file_uploader("📗 Upload Pricing Format File", type="xlsx")
 
-    st.markdown("---")
-    raw_files, raw_zip = upload_block("RAW FILES", ["xlsx"])
-    error_files, error_zip = upload_block("ERROR FILES", ["xlsx"])
+    files = st.file_uploader("📤 Upload Excel Files", type="xlsx", accept_multiple_files=True)
+    zip_file = st.file_uploader("📦 OR Upload Folder (ZIP)", type="zip")
 
     if st.button("🚀 Start Processing"):
         if not adf_file or not pricing_file:
             st.error("❌ Upload reference files")
             st.stop()
 
-        raw_excels = extract_files(raw_files, raw_zip, (".xlsx",))
-        error_excels = extract_files(error_files, error_zip, (".xlsx",))
-
-        all_files = raw_excels + error_excels
-        if not all_files:
-            st.error("❌ No Excel files uploaded")
+        source_files = extract_files(files, zip_file, (".xlsx",))
+        if not source_files:
+            st.error("❌ No Excel files found")
             st.stop()
 
         ref_wb = load_workbook(adf_file, data_only=False)
@@ -124,13 +106,14 @@ if menu == "📂 New File Creation":
         output = []
         prog = st.progress(0)
 
-        for i, f in enumerate(all_files, start=1):
+        for i, f in enumerate(source_files, start=1):
             df = pd.read_excel(f, usecols=range(37))
             wb = load_workbook(f)
             ws = wb.active
             ws.title = "Raw"
 
             ws.delete_rows(1, ws.max_row)
+
             ws.append(list(df.columns))
             for _, row in df.iterrows():
                 ws.append(list(row))
@@ -142,9 +125,7 @@ if menu == "📂 New File Creation":
             for col, formula in ref_formulas.items():
                 letter = ws.cell(2, col).column_letter
                 for r in range(2, last_row + 1):
-                    ws[f"{letter}{r}"] = Translator(
-                        formula, f"{letter}2"
-                    ).translate_formula(f"{letter}{r}")
+                    ws[f"{letter}{r}"] = Translator(formula, f"{letter}2").translate_formula(f"{letter}{r}")
 
             if "Pricing" in wb.sheetnames:
                 wb.remove(wb["Pricing"])
@@ -157,98 +138,58 @@ if menu == "📂 New File Creation":
             wb.save(buf)
             buf.seek(0)
             output.append((f.name, buf))
-            prog.progress(i / len(all_files))
+            prog.progress(i / len(source_files))
 
-        st.success("🎉 Files processed successfully")
-        st.download_button(
-            "📥 Download Output ZIP",
-            make_zip(output),
-            "New_Files_Output.zip",
-            "application/zip"
-        )
+        st.success("🎉 New files created")
+        st.download_button("📥 Download ZIP", make_zip(output), "New_Files.zip", "application/zip")
 
 # =====================================================
-# 📊 EXCEL FORMULA UPDATER (SEPARATE PATH STYLE)
+# 2️⃣ CSV → XLSX
 # =====================================================
-elif menu == "📊 Excel Formula Updater":
-    st.title("📊 Excel Formula Updater")
+elif menu == "🔄 CSV → XLSX Converter":
+    st.title("🔄 CSV → XLSX Converter")
 
-    input_files, input_zip = upload_block("INPUT FILES", ["xlsx"])
+    files = st.file_uploader("📤 Upload CSV Files", type="csv", accept_multiple_files=True)
+    zip_file = st.file_uploader("📦 OR Upload CSV Folder (ZIP)", type="zip")
 
-    if st.button("🚀 Update Formula"):
-        excels = extract_files(input_files, input_zip, (".xlsx",))
-        if not excels:
-            st.error("❌ No Excel files uploaded")
+    if st.button("🚀 Convert"):
+        csvs = extract_files(files, zip_file, (".csv",))
+        if not csvs:
+            st.error("❌ No CSV files")
             st.stop()
 
         output = []
-        for f in excels:
-            wb = load_workbook(f)
-            ws = wb.active
-
-            for r in range(2, ws.max_row + 1):
-                ws[f"AL{r}"] = f"=IF(W{r}/1000>9.9,CEILING(W{r}/1000,1),CEILING(W{r}/1000,0.5))"
-
+        for f in csvs:
+            df = pd.read_csv(f)
             buf = io.BytesIO()
-            wb.save(buf)
+            df.to_excel(buf, index=False)
             buf.seek(0)
-            output.append((f.name, buf))
+            output.append((f.name.replace(".csv", ".xlsx"), buf))
 
-        st.success("✅ Formula updated")
-        st.download_button(
-            "📥 Download Updated ZIP",
-            make_zip(output),
-            "Formula_Updated.zip",
-            "application/zip"
-        )
+        st.download_button("📥 Download XLSX ZIP", make_zip(output), "Converted_XLSX.zip", "application/zip")
 
 # =====================================================
-# 5️⃣ COURIER COST UPDATER
+# 3️⃣ MERCHANT AUTO RENAME
 # =====================================================
-elif menu == "🚚 Courier Cost Updater":
-    st.title("🚚 Courier Cost Updater")
+elif menu == "📝 Merchant Auto Rename":
+    st.title("📝 Merchant Auto Rename")
 
-    cost_file = st.file_uploader("📗 Upload Courier Cost File", type="xlsx")
-    files = st.file_uploader("📤 Upload Testing Files", type="xlsx", accept_multiple_files=True)
+    files = st.file_uploader("📤 Upload Excel Files", type="xlsx", accept_multiple_files=True)
     zip_file = st.file_uploader("📦 OR Upload Folder (ZIP)", type="zip")
 
-    if st.button("🚀 Update Cost"):
-        if not cost_file:
-            st.error("❌ Upload cost file")
-            st.stop()
-
+    if st.button("🚀 Rename"):
         excels = extract_files(files, zip_file, (".xlsx",))
-        if not excels:
-            st.error("❌ No testing files")
-            st.stop()
-
-        df_cost = pd.read_excel(cost_file, sheet_name="Sheet1")
-        df_cost.columns.values[0] = "AWB"
-        lookup = df_cost.set_index("AWB").to_dict("index")
-
-        headers = [
-            "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
-            "Reverse","COD","SDL","Fuel","QC","Others","Gross"
-        ]
-        col_start = 53
-
         output = []
+
         for f in excels:
-            wb = load_workbook(f)
-            ws = wb.active
-
-            for i, h in enumerate(headers):
-                ws.cell(1, col_start + i).value = h
-
-            for r in range(2, ws.max_row + 1):
-                awb = ws.cell(r, 4).value
-                if awb in lookup:
-                    for i, v in enumerate(lookup[awb].values()):
-                        ws.cell(r, col_start + i).value = v
+            df = pd.read_excel(f, header=None)
+            name = f.name
+            if str(df.iloc[0,0]).lower() == "client name":
+                name = str(df.iloc[1,0]).strip() + ".xlsx"
 
             buf = io.BytesIO()
-            wb.save(buf)
+            df.to_excel(buf, index=False, header=False)
             buf.seek(0)
-            output.append((f.name, buf))
+            output.append((name, buf))
 
-        st.download_button("📥 Download Cost Updated ZIP", make_zip(output), "Cost_Updated.zip", "application/zip")
+        st.download_button("📥 Download Renamed ZIP", make_zip(output), "Renamed_Files.zip", "application/zip")
