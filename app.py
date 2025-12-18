@@ -16,8 +16,6 @@ menu = st.sidebar.radio(
         "📂 New File Creation",
         "🔄 CSV → XLSX Converter",
         "📝 Merchant Auto Rename",
-        "📊 Excel Formula Updater",
-        "🚚 Courier Cost Updater"
     ]
 )
 
@@ -61,87 +59,6 @@ def make_zip(file_buffers):
     buf.seek(0)
     return buf
 
-
-# =====================================================
-# 1️⃣ NEW FILE CREATION
-# =====================================================
-if menu == "📂 New File Creation":
-    st.title("📂 New File Creation Tool")
-
-    adf_file = st.file_uploader("📘 Upload ADF Foods File", type="xlsx")
-    pricing_file = st.file_uploader("📗 Upload Pricing Format File", type="xlsx")
-
-    files = st.file_uploader("📤 Upload Excel Files", type="xlsx", accept_multiple_files=True)
-    zip_file = st.file_uploader("📦 OR Upload Folder (ZIP)", type="zip")
-
-    if st.button("🚀 Start Processing"):
-        if not adf_file or not pricing_file:
-            st.error("❌ Upload reference files")
-            st.stop()
-
-        source_files = extract_files(files, zip_file, (".xlsx",))
-        if not source_files:
-            st.error("❌ No Excel files found")
-            st.stop()
-
-        ref_wb = load_workbook(adf_file, data_only=False)
-        ref_ws = ref_wb.active
-        ref_formulas = {
-            c: ref_ws.cell(2, c).value
-            for c in range(38, 65)
-            if isinstance(ref_ws.cell(2, c).value, str)
-            and ref_ws.cell(2, c).value.startswith("=")
-        }
-
-        pricing_df = pd.read_excel(pricing_file, header=None)
-        pricing_data = pricing_df.values.tolist()
-
-        extra_cols = [
-            "Weight","Merchant Zone","Courier Name","FWD","CHECK","COD","CHECK",
-            "RTO","CHECK","REVERSAL","CHECK","QC","TOTAL","TOTAL+GST","Diff",
-            "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
-            "Reverse","COD","SDL","Fuel","QC","Others","Gross"
-        ]
-
-        output = []
-        prog = st.progress(0)
-
-        for i, f in enumerate(source_files, start=1):
-            df = pd.read_excel(f, usecols=range(37))
-            wb = load_workbook(f)
-            ws = wb.active
-            ws.title = "Raw"
-
-            ws.delete_rows(1, ws.max_row)
-
-            ws.append(list(df.columns))
-            for _, row in df.iterrows():
-                ws.append(list(row))
-
-            for j, col in enumerate(extra_cols):
-                ws.cell(1, 38 + j).value = col
-
-            last_row = ws.max_row
-            for col, formula in ref_formulas.items():
-                letter = ws.cell(2, col).column_letter
-                for r in range(2, last_row + 1):
-                    ws[f"{letter}{r}"] = Translator(formula, f"{letter}2").translate_formula(f"{letter}{r}")
-
-            if "Pricing" in wb.sheetnames:
-                wb.remove(wb["Pricing"])
-            ps = wb.create_sheet("Pricing")
-            for r, row in enumerate(pricing_data, start=1):
-                for c, v in enumerate(row, start=1):
-                    ps.cell(r, c, v)
-
-            buf = io.BytesIO()
-            wb.save(buf)
-            buf.seek(0)
-            output.append((f.name, buf))
-            prog.progress(i / len(source_files))
-
-        st.success("🎉 New files created")
-        st.download_button("📥 Download ZIP", make_zip(output), "New_Files.zip", "application/zip")
 
 # =====================================================
 # 2️⃣ CSV → XLSX
