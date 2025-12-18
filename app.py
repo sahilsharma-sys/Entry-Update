@@ -201,3 +201,54 @@ elif menu == "📊 Excel Formula Updater":
             "Formula_Updated.zip",
             "application/zip"
         )
+
+# =====================================================
+# 5️⃣ COURIER COST UPDATER
+# =====================================================
+elif menu == "🚚 Courier Cost Updater":
+    st.title("🚚 Courier Cost Updater")
+
+    cost_file = st.file_uploader("📗 Upload Courier Cost File", type="xlsx")
+    files = st.file_uploader("📤 Upload Testing Files", type="xlsx", accept_multiple_files=True)
+    zip_file = st.file_uploader("📦 OR Upload Folder (ZIP)", type="zip")
+
+    if st.button("🚀 Update Cost"):
+        if not cost_file:
+            st.error("❌ Upload cost file")
+            st.stop()
+
+        excels = extract_files(files, zip_file, (".xlsx",))
+        if not excels:
+            st.error("❌ No testing files")
+            st.stop()
+
+        df_cost = pd.read_excel(cost_file, sheet_name="Sheet1")
+        df_cost.columns.values[0] = "AWB"
+        lookup = df_cost.set_index("AWB").to_dict("index")
+
+        headers = [
+            "Courier charged weight","Courier Zone","Freight","RTO","RTO Discount",
+            "Reverse","COD","SDL","Fuel","QC","Others","Gross"
+        ]
+        col_start = 53
+
+        output = []
+        for f in excels:
+            wb = load_workbook(f)
+            ws = wb.active
+
+            for i, h in enumerate(headers):
+                ws.cell(1, col_start + i).value = h
+
+            for r in range(2, ws.max_row + 1):
+                awb = ws.cell(r, 4).value
+                if awb in lookup:
+                    for i, v in enumerate(lookup[awb].values()):
+                        ws.cell(r, col_start + i).value = v
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            output.append((f.name, buf))
+
+        st.download_button("📥 Download Cost Updated ZIP", make_zip(output), "Cost_Updated.zip", "application/zip")
